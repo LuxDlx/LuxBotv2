@@ -151,7 +151,7 @@ async def checktonotify():
             with open(f"{cwd}/cache.json","w") as f:
                 json.dump(cachedata, f, indent=4)
     except Exception as e:
-        print("Error: " + e)
+        print("Error: " + e.__str__())
 @client.event
 async def on_member_join(member: discord.Member):
     if member.guild.id == 702210671760244937:
