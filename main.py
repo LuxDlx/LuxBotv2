@@ -88,47 +88,50 @@ print(cwd)
 
 @tasks.loop(minutes=1.0)  # Run every minute
 async def checktonotify():
-    channel = await client.fetch_channel(755882905032720460) 
-    luxtrackerdata = requests.get("https://sillysoft.net/lux/list503.php")
-    tree = ET.ElementTree(ET.fromstring(luxtrackerdata.content))
-    root = tree.getroot()
-    with open(f"{cwd}/notifications.json","r") as f:
-        data = json.load(f)
-    with open(f"{cwd}/cache.json","r") as f:
-        cachedata = json.load(f)
-    for host in root.findall('host'):
-        hostname = host.find('name').text
-        mapname = host.find('boardSize').text
-        playerlist = host.find('playerNames').text
-        print(playerlist)
-        playerlist = getplayerlist(playerlist)
-        try:
-            x = cachedata[hostname][mapname]
-        except:
+    try:
+        channel = await client.fetch_channel(755882905032720460) 
+        luxtrackerdata = requests.get("https://sillysoft.net/lux/list503.php")
+        tree = ET.ElementTree(ET.fromstring(luxtrackerdata.content))
+        root = tree.getroot()
+        with open(f"{cwd}/notifications.json","r") as f:
+            data = json.load(f)
+        with open(f"{cwd}/cache.json","r") as f:
+            cachedata = json.load(f)
+        for host in root.findall('host'):
+            hostname = host.find('name').text
+            mapname = host.find('boardSize').text
+            playerlist = host.find('playerNames').text
+            print(playerlist)
+            playerlist = getplayerlist(playerlist)
             try:
-                x = cachedata[hostname]
-                cachedata[hostname][mapname] = playerlist
+                x = cachedata[hostname][mapname]
             except:
-                cachedata[hostname] = {}
-                cachedata[hostname][mapname] = playerlist
-        for key in data.keys():
-            for player in playerlist:
-                if player in data[key]["users"]:
-                        if not player in cachedata[hostname][mapname]:
-                            await channel.send(f"**<@{key}>! {player}** is playing on **{mapname}** (host: {hostname}) with **{str(len(playerlist)-1)} other players** right now!") 
-            if len(playerlist) >= int(data[key]["treshold"]):
-                if len(cachedata[hostname][mapname]) < len(playerlist):
-                    if len(cachedata[hostname][mapname]) < int(data[key]["treshold"]):
-                        await channel.send(f"**<@{key}>! {len(playerlist)} players** are playing on **{mapname}** (host: {hostname}) right now!") 
+                try:
+                    x = cachedata[hostname]
+                    cachedata[hostname][mapname] = playerlist
+                except:
+                    cachedata[hostname] = {}
+                    cachedata[hostname][mapname] = playerlist
+            for key in data.keys():
+                for player in playerlist:
+                    if player in data[key]["users"]:
+                            if not player in cachedata[hostname][mapname]:
+                                await channel.send(f"**<@{key}>! {player}** is playing on **{mapname}** (host: {hostname}) with **{str(len(playerlist)-1)} other players** right now!") 
+                if len(playerlist) >= int(data[key]["treshold"]):
+                    if len(cachedata[hostname][mapname]) < len(playerlist):
+                        if len(cachedata[hostname][mapname]) < int(data[key]["treshold"]):
+                            await channel.send(f"**<@{key}>! {len(playerlist)} players** are playing on **{mapname}** (host: {hostname}) right now!") 
 
-        for player in playerlist:
-            if not player in cachedata[hostname][mapname]:
-                cachedata[hostname][mapname].append(player)
-        for player in cachedata[hostname][mapname]:
-            if not player in playerlist:
-                cachedata[hostname][mapname].remove(player)
-        with open(f"{cwd}/cache.json","w") as f:
-            json.dump(cachedata, f, indent=4)
+            for player in playerlist:
+                if not player in cachedata[hostname][mapname]:
+                    cachedata[hostname][mapname].append(player)
+            for player in cachedata[hostname][mapname]:
+                if not player in playerlist:
+                    cachedata[hostname][mapname].remove(player)
+            with open(f"{cwd}/cache.json","w") as f:
+                json.dump(cachedata, f, indent=4)
+    except Exception as e:
+        print("Error: " + e)
 @client.event
 async def on_member_join(member: discord.Member):
     if member.guild.id == 702210671760244937:
@@ -371,8 +374,51 @@ async def notify_list(interaction: discord.Interaction):
     notifiers = str(data[str(interaction.user.id)])
     await interaction.followup.send(f"Your active notifications:\n```json\n{notifiers}\n```")
 
+@app_commands.command(description="Download a plugin/map")
+@app_commands.describe(name="The name of the plugin/map")
+async def plugin(interaction: discord.Interaction, name: str):
+    await interaction.response.defer(thinking=True)
+
+    # Fetch the plugin list
+    plugin_data = requests.get("https://sillysoft.net/lux/plugins_gz.php")
+    tree = ET.ElementTree(ET.fromstring(plugin_data.content))
+    root = tree.getroot()
+
+    # Search for the specified plugin
+    found_plugin = None
+    base_url = root.find('base_url').text
+    for map_element in root.findall('map'):
+        title = map_element.find('title').text
+        if title.lower() == name.lower():  # Case-insensitive comparison
+            found_plugin = {
+                'title': title,
+                'version': map_element.find('version').text,
+                'author': map_element.find('author').text,
+                'webpage': map_element.find('webpage').text,
+                'file_list': map_element.find('file_list').text,
+                'description': map_element.find('description').text,
+                'image': f"http://sillysoft.net/{map_element.find('img').text}"
+            }
+            break
+
+    if found_plugin:
+        # Create an embed with the plugin information
+        em = discord.Embed(
+            title=found_plugin['title'],
+            description=found_plugin['description'],
+            color=discord.Color.green()
+        )
+        em.add_field(name="Author", value=found_plugin['author'])
+        em.add_field(name="Version", value=found_plugin['version'])
+        em.add_field(name="Download Link", value=f"[Download Here]({base_url}{found_plugin['file_list']})")
+        em.set_image(url=found_plugin['image'])
+        await interaction.followup.send(embed=em)
+    else:
+        await interaction.followup.send("No plugin found matching your criteria :(")
+        
 tree.add_command(me)
 tree.add_command(luxtracker)
 tree.add_command(leaderboard)
+tree.add_command(plugin)
 tree.add_command(notification_group)
 client.run(TOKEN)
