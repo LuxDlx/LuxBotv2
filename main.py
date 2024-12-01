@@ -2,10 +2,10 @@ import os, sys, requests
 import discord
 import json
 import re
+from lxml import etree as ET
 from bs4 import BeautifulSoup
 import os
 import sys
-import xml.etree.ElementTree as ET
 from discord.ext import tasks
 from discord import app_commands
 cwd = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -41,6 +41,26 @@ def formatmap(map: str):
     map = map.replace(" ","%20")
     
     return map
+
+
+def escape_invalid_xml_chars_in_quotes(text):
+    result = text.replace(b"&", b"&amp;")
+    result = result.replace(b"<-", b"&lt;-")
+    result = result.replace(b"->", b"-&gt;")
+    result = result.replace(b"%)", b" percent)")
+    result = result.replace(b"<<", b"&lt;&lt;")
+    result = result.replace(b">>", b"&gt;&gt;")
+    result = result.replace("è".encode(), b"e")
+    # Step 1: Decode the byte string
+    decoded_string = result.decode('utf-8', errors='replace')
+
+    # Step 2: Replace \ufffd with an empty string
+    cleaned_string = decoded_string.replace('\ufffd', '')
+
+    # Step 3: Encode back to bytes (if needed)
+    result = cleaned_string.encode('utf-8')
+    
+    return result
 
 def getplayerlist(playerlist: str):
     if playerlist.endswith("and 6 robots"):
@@ -381,12 +401,14 @@ async def plugin(interaction: discord.Interaction, name: str):
 
     # Fetch the plugin list
     plugin_data = requests.get("https://sillysoft.net/lux/plugins_gz.php")
-    tree = ET.ElementTree(ET.fromstring(plugin_data.content))
+    pdc = escape_invalid_xml_chars_in_quotes(plugin_data.content)
+    parser = ET.XMLParser(recover=True)
+    tree = ET.ElementTree(ET.fromstring(pdc, parser))
     root = tree.getroot()
 
     # Search for the specified plugin
     found_plugin = None
-    base_url = root.find('base_url').text
+    base_url = root.find('base_URL').text
     for map_element in root.findall('map'):
         title = map_element.find('title').text
         if title.lower() == name.lower():  # Case-insensitive comparison
@@ -397,7 +419,7 @@ async def plugin(interaction: discord.Interaction, name: str):
                 'webpage': map_element.find('webpage').text,
                 'file_list': map_element.find('file_list').text,
                 'description': map_element.find('description').text,
-                'image': f"http://sillysoft.net/{map_element.find('img').text}"
+                'image': f"http://sillysoft.net/{map_element.find('image').text}"
             }
             break
 
@@ -410,7 +432,12 @@ async def plugin(interaction: discord.Interaction, name: str):
         )
         em.add_field(name="Author", value=found_plugin['author'])
         em.add_field(name="Version", value=found_plugin['version'])
-        em.add_field(name="Download Link", value=f"[Download Here]({base_url}{found_plugin['file_list']})")
+        for url in found_plugin['file_list'].replace(" ", "%20").split(";"):
+            # Construct the full URL and replace spaces with %20
+            formatted_url = f"{base_url}{url.strip()}"
+            
+            # Add a new field for each download link
+            em.add_field(name="Download Link", value=f"[Download Here]({formatted_url})")
         em.set_image(url=found_plugin['image'])
         await interaction.followup.send(embed=em)
     else:
