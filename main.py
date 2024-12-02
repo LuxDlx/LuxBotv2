@@ -183,10 +183,6 @@ async def on_ready():
     await tree.sync()
     print("Tree synced!")
     checktonotify.start()
-    guild = await client.fetch_guild(702210671760244937)
-    role = await guild.create_role(name="BOT")
-    user = await guild.fetch_member(971316880243576862)
-    await user.add_roles(role)
 
 @app_commands.command(description="Get the luxtracker")
 @app_commands.describe(hide_empty="Whether to hide rooms with 0 players")
